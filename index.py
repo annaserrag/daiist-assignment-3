@@ -380,8 +380,11 @@ def embed_texts(texts: list[str], task: str = "RETRIEVAL_DOCUMENT", client=None)
     client = client or _client()
     for attempt in range(6):
         try:
+            # one Content per text: a plain list of strings is read as ONE multi-part input by
+            # gemini-embedding-2 and comes back as a single vector
+            contents = [types.Content(parts=[types.Part(text=t)]) for t in texts]
             res = client.models.embed_content(
-                model=EMBED_MODEL, contents=texts,
+                model=EMBED_MODEL, contents=contents,
                 config=types.EmbedContentConfig(task_type=task, output_dimensionality=EMBED_DIM))
             return [e.values for e in res.embeddings]
         except Exception as error:  # noqa: BLE001 - rate limits are retried, the rest re-raised
@@ -413,7 +416,10 @@ def embed_and_store(chunks: list[Chunk]) -> dict[str, list[float]]:
         with VECTORS.open("a") as f:
             for i in range(0, len(todo), BATCH):
                 batch = todo[i:i + BATCH]
-                for c, v in zip(batch, embed_texts([c.embed_text for c in batch], client=client)):
+                got = embed_texts([c.embed_text for c in batch], client=client)
+                if len(got) != len(batch):
+                    raise RuntimeError(f"asked for {len(batch)} embeddings, got {len(got)}")
+                for c, v in zip(batch, got):
                     vectors[c.sha] = v
                     f.write(json.dumps({"sha": c.sha, "v": [round(x, 6) for x in v]}) + "\n")
                 f.flush()
