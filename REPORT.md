@@ -41,7 +41,7 @@ Before embedding, every chunk gets a short header with the document title, the l
 
 ## Test set
 
-I wrote the 42 questions myself while reading the documents, thinking about what an associate would actually ask while preparing a deal, so most of them are written like real situations ("The deal is signed in February and the audited accounts for last year aren't ready yet, which figures do we use for the turnover?") and not like exam questions. For each one I wrote where the answer is and a short reference answer, and before using them I checked with code that every expected location really exists in the extracted units, and that none of the topics of the unanswerable questions appear anywhere in the corpus.
+I came up with the 42 questions together with my sister, who works in M&A, because she knows what associates actually ask while they prepare a deal and which of these questions come up the most, and I drafted and checked them against the documents with the help of an AI assistant (see AI use), so most of them are written like real situations ("The deal is signed in February and the audited accounts for last year aren't ready yet, which figures do we use for the turnover?") and not like exam questions. For each one I wrote where the answer is and a short reference answer, and before using them I checked with code that every expected location really exists in the extracted units, and that none of the topics of the unanswerable questions appear anywhere in the corpus.
 
 | Kind | Count |
 |---|---|
