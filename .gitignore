@@ -12,3 +12,6 @@ corpus/
 
 # Never commit your API key
 .env
+
+# Evaluation-time flag (see retrieve.py)
+index/.base_only
