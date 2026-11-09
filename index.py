@@ -455,8 +455,14 @@ def main() -> None:
     words = {d: sum(len(u.text.split()) for u in units if u.source == d) for d in DOCUMENTS}
     log("units per document:", {d: sum(u.source == d for u in units) for d in DOCUMENTS})
     log("words per document:", words, "total", sum(words.values()))
+    stats = {"documents": {d: {"units": sum(u.source == d for u in units), "words": words[d]} for d in DOCUMENTS},
+             "total_words": sum(words.values()), "designs": {}}
     for design in DESIGNS:
         chunks = chunk_units(units, design)
+        stats["designs"][design] = {"chunks": len(chunks),
+                                    "avg_words": round(sum(len(c.text.split()) for c in chunks) / len(chunks))}
+        INDEX.mkdir(exist_ok=True)
+        (INDEX / "stats.json").write_text(json.dumps(stats, indent=2))  # the numbers quoted in REPORT.md
         # keep chunks added later with add_document (they are not in DOCUMENTS)
         extra = [c for c in load_chunks(design) if c["source"] not in DOCUMENTS]
         save_chunks(chunks, design)
