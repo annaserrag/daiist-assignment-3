@@ -41,7 +41,7 @@ Before embedding, every chunk gets a short header with the document title, the l
 
 ## Test set
 
-I wrote the 42 questions myself while reading the documents, thinking about what an associate would actually ask while preparing a deal, so most of them are written like real situations ("The deal is signed in February and the audited accounts for last year are not ready yet. Which figures do we use for turnover?") and not like exam questions. For each one I wrote where the answer is and a short reference answer, and before using them I checked with code that every expected location really exists in the extracted units, and that none of the topics of the unanswerable questions appear anywhere in the corpus.
+I wrote the 42 questions myself while reading the documents, thinking about what an associate would actually ask while preparing a deal, so most of them are written like real situations ("The deal is signed in February and the audited accounts for last year aren't ready yet, which figures do we use for the turnover?") and not like exam questions. For each one I wrote where the answer is and a short reference answer, and before using them I checked with code that every expected location really exists in the extracted units, and that none of the topics of the unanswerable questions appear anywhere in the corpus.
 
 | Kind | Count |
 |---|---|
@@ -52,8 +52,8 @@ I wrote the 42 questions myself while reading the documents, thinking about what
 
 Two examples:
 
-- **Multi**: "If we offer commitments in Phase II after working day 55, what are the deadline for the final decision and the deadline for submitting commitments?" needs EUMR Art. 10(3) for the extension of the deadline and RN para. 88 for the 65 working days to submit commitments, and an answer that only finds one of them is incomplete.
-- **Unanswerable**: "What are the Spanish national merger notification thresholds that would apply if the deal has no EU dimension?" is very close to the topic of the corpus, which is what makes it a good test, because the documents talk about thresholds all the time but only the EU ones, so the right answer is that the documents don't cover it.
+- **Multi**: "If we offer commitments in Phase II after working day 55, what's the deadline to submit them and when does the Commission have to take the final decision?" needs EUMR Art. 10(3) for the extension of the deadline and RN para. 88 for the 65 working days to submit commitments, and an answer that only finds one of them is incomplete.
+- **Unanswerable**: "If the deal doesn't have an EU dimension, what are the Spanish merger notification thresholds that would apply?" is very close to the topic of the corpus, which is what makes it a good test, because the documents talk about thresholds all the time but only the EU ones, so the right answer is that the documents don't cover it.
 
 ## Retrieval
 
@@ -74,7 +74,7 @@ The subagent is defined in `.claude/agents/corpus-researcher.md` and can only us
 
 ## Adding a document
 
-`add_document` hashes the file before doing anything, so if exactly the same file is already in the index it answers that it's already indexed and doesn't embed anything, and if a file with the same short name but different content is added, it replaces the old version instead of keeping both, because in law having two versions of the same rule in the index is worse than having none. The demo uses the unanswerable question "Which deals qualify for the simplified procedure and the short Form CO?" and the Commission Notice on simplified treatment of 2023 (CELEX 52023XC0505(01)), which is exactly the document that answers it.
+`add_document` hashes the file before doing anything, so if exactly the same file is already in the index it answers that it's already indexed and doesn't embed anything, and if a file with the same short name but different content is added, it replaces the old version instead of keeping both, because in law having two versions of the same rule in the index is worse than having none. The demo uses the unanswerable question "Which deals can go through the simplified procedure and use the short Form CO?" and the Commission Notice on simplified treatment of 2023 (CELEX 52023XC0505(01)), which is exactly the document that answers it.
 
 *(Answer before and after: filled in after the evaluation runs.)*
 
