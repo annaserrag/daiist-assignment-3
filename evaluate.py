@@ -113,6 +113,9 @@ def recheck(a: dict) -> dict:
 
 async def run_agent(questions: list[dict]) -> dict:
     answers = {k: recheck(v) for k, v in load_answers().items()}
+    if answers:  # save the re-checked versions, so every file shows what the associate would see now
+        (EVAL / "answers.jsonl").write_text(
+            "".join(json.dumps(a, ensure_ascii=False) + "\n" for a in answers.values()), encoding="utf-8")
     todo = [q for q in questions if q["id"] not in answers]
     if todo:
         BASE_ONLY.touch()  # the server ignores documents added later, so the test set means the same
