@@ -180,7 +180,7 @@ Answer shown to the associate:
 {answer}"""
 
 
-def evidence(trace: list[str], limit: int = 12000) -> str:
+def evidence(trace: list[str], limit: int = 16000) -> str:
     text = "\n".join(line.removeprefix("result ") for line in trace if line.startswith("result "))
     return text[:limit] or "(no passages retrieved)"
 
@@ -209,7 +209,7 @@ async def judge_all(questions: list[dict], answers: dict) -> dict:
         prompt = JUDGE_HEADER + "\n\n".join(
             f"=== Item {q['id']} ===\n" + JUDGE_ITEM.format(
                 question=q["question"], reference=q["reference_answer"],
-                evidence=evidence(answers[q["id"]]["trace"], limit=6000),
+                evidence=evidence(answers[q["id"]]["trace"], limit=16000),
                 answer=answers[q["id"]]["answer"] or "(empty)") for q in batch)
         grades = None
         for attempt in range(3):

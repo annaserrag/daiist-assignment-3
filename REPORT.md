@@ -113,15 +113,24 @@ In my first run it blocked 12 answers, but when I looked at them none was actual
 | Answers blocked by the source check | 0 |
 | Answers that cite the document where the answer is | 33 of 35 |
 
-*(Judge results and my agreement with the judge: added when the judge has graded all 42 answers.)*
+| Judge (42 questions) | Result |
+|---|---|
+| Correct | 42 of 42 |
+| Supported by the passages the search returned | 42 of 42 |
+| Agreement with my own grades on correct (24 answers) | 0.958 |
+| Agreement with my own grades on supported (24 answers) | 0.958 |
+
+The first time the judge graded everything it said 5 answers were unsupported, but when I read its reasons it kept saying that the passage "cuts off" or was "truncated", and it was because my code was only sending the judge the first 6,000 characters of what the search returned, so for 17 answers it couldn't see all the passages. I sent it the full passages and graded those 17 again, and then all 42 were supported (all in `eval/summary.json`). I graded 24 of the answers myself before seeing the judge's grades, and we only disagreed on one, q06, which is in Failures.
 
 ## Failures
 
-*(Filled in after the evaluation runs.)*
+The only real failure was q06, which was a **wrong answer from the right passage**, because the search found EUMR Art. 10(3) but the answer said that the 105 working days also happen when the parties ask for an extension of up to 15 days, when in the article the 105 days are only for commitments offered late and the extensions are a separate rule, so it mixed the two. The judge said it was correct and supported, and the source check let it through because the source was real, so the only one that caught it was me, which shows that a real source doesn't mean the answer read it correctly, and that the judge is quite lenient with deadlines that look right.
+
+Then two answers (q30 and q34) didn't cite the document I was expecting, but they were right and they cited the guide that explains the same rule instead of the law, so I think this is more a **bad test question** because I was too strict with where the answer had to come from. Also, in the retrieval test 3 questions (q03, q28 and q34) didn't have all their passages in the top 5, but the agent searched again with other words and still answered them correctly, so these retrieval misses didn't end up being wrong answers. There were no wrong refusals and, after fixing the judge, no unsupported claims.
 
 ## Decision
 
-*(Filled in after the evaluation runs, with the cost and latency per question.)*
+I would let the associates use it to find the right passage and get a first answer, but not rely on it without opening the source, because q06 shows that an answer can look right, cite the right article and still get a deadline wrong, and deadlines are exactly the kind of mistake that is expensive for the boutique. What I'm happy with is the "I don't know" part, because it refused the 7 questions the documents don't cover and it didn't refuse any that they do, which was the main thing I wanted from the use case. Each question cost on average 4,267 input tokens, 147 output tokens and 6.9 seconds, so it's cheap and fast enough for associates to use it all the time, and the next thing I would add is a check for numbers like deadlines and thresholds, comparing them with the passage, since that's where the one failure happened.
 
 ## AI use
 

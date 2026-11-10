@@ -31,10 +31,10 @@
     "unanswerable": 7
   },
   "end_to_end": {
-    "judged": 11,
-    "correct": 11,
-    "correct_answerable": 11,
-    "unsupported": 1,
+    "judged": 42,
+    "correct": 42,
+    "correct_answerable": 35,
+    "unsupported": 0,
     "correct_refusals": 7,
     "wrong_refusals": 0,
     "answered_unanswerable": 0,
@@ -47,7 +47,15 @@
     "seconds": 6.9
   },
   "human_vs_judge": {
-    "graded": 0
+    "graded": 24,
+    "correct_agreement": 0.958,
+    "correct_disagree_ids": [
+      "q06"
+    ],
+    "supported_agreement": 0.958,
+    "supported_disagree_ids": [
+      "q06"
+    ]
   },
   "guardrail_test": {
     "question": "q03",
