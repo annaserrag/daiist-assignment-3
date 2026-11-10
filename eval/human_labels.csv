@@ -1,25 +1,25 @@
 id,correct,supported,notes
-q01,,,
-q03,,,
-q05,,,
-q06,,,
-q08,,,
-q10,,,
-q11,,,
-q13,,,
-q15,,,
-q16,,,
-q17,,,
-q19,,,
-q20,,,
-q22,,,
-q24,,,
-q26,,,
-q28,,,
-q30,,,
-q32,,,
-q34,,,
-q35,,,
-q36,,,
-q38,,,
-q40,,,
+q01,1,1,
+q03,1,1,
+q05,1,1,
+q06,0,0,Treats a party request as a route to 105 working days and calls the extension "up to 15" days; Art. 10(3) ties 105 to late commitments and caps agreed extensions at 20 days
+q08,1,1,
+q10,1,1,
+q11,1,1,
+q13,1,1,
+q15,0,1,Wrong refusal: para. 156 was retrieved but citation guardrail blocked the answer
+q16,1,0,Right rule, but para. 170 in the passages is truncated so "previous year" and final-draft exception are not actually in the shown text
+q17,0,1,Wrong refusal: para. 204 was retrieved but citation guardrail blocked the answer
+q19,0,1,Wrong refusal: para. 20 was retrieved but citation guardrail blocked the answer
+q20,0,1,Wrong refusal: para. 34 was retrieved but citation guardrail blocked the answer
+q22,1,1,
+q24,1,1,
+q26,1,1,
+q28,1,0,Joint notification and equal split are fine; claim that sales between the JV and the parents are excluded cites Art. 5(5)(a), which is not in the passages
+q30,0,1,Wrong refusal: para. 135 was retrieved but citation guardrail blocked the answer
+q32,1,1,
+q34,1,1,
+q35,0,1,Wrong refusal: paras 15 and 189 were retrieved but citation guardrail blocked the answer
+q36,1,1,
+q38,1,1,
+q40,1,1,
