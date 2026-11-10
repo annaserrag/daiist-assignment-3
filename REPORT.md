@@ -81,7 +81,25 @@ Without prejudice to Article 4(5) and Article 22, this Regulation shall apply to
 
 The subagent (`.claude/agents/corpus-researcher.md`) could only use `search`, and its instructions told it to search again with other words if needed, answer in at most 150 words only with what the passages say, cite every sentence, say "The Deal Desk documents do not cover this." when they don't have the answer, and never say a deal doesn't need approval unless a passage says so.
 
-*(Transcript from my editor: to be added.)*
+I used the subagent from my editor with the question "Use the corpus-researcher subagent, how long can the seller's non-compete last", and it searched once and answered in 44 seconds with the same rule as my reference answer for q19, citing only passages from the Ancillary Restraints Notice (screenshot in `docs/subagent_transcript.png`):
+
+```
+> Use the corpus-researcher subagent, how long can the seller's non-compete last
+
+I'll ask the corpus-researcher subagent about seller non-compete duration under the Deal Desk library.
+
+Explored 1 search
+  • Seller non-compete duration (Auto, Completed)
+
+Up to three years if the sale transfers both goodwill and know-how; up to two years if only
+goodwill is transferred. [ARN para. 20]
+
+Seller non-competes can be directly related and necessary so the buyer gets the full value of the
+assets (including goodwill/know-how). [ARN para. 18] Duration, geography, subject matter and the
+persons bound must not go beyond what is reasonably necessary. [ARN para. 19]
+
+(via corpus-researcher)
+```
 
 ## Adding a document
 
