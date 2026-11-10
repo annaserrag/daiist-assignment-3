@@ -28,7 +28,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
 
 import index as pipeline
-from agent import REFUSAL, ask, build_agent, load_mcp_tools
+from agent import REFUSAL, REFUSED, ask, build_agent, check_citations, load_mcp_tools, parse_citations
 from api_key import load_api_key
 from retrieve import BASE_ONLY, CONFIG, QueryEmbedder, Searcher
 
@@ -103,8 +103,16 @@ def load_answers() -> dict:
     return {r["id"]: r for r in map(json.loads, path.read_text(encoding="utf-8").splitlines()) if r}
 
 
+def recheck(a: dict) -> dict:
+    """Apply the current citation guardrail to a cached raw answer (no model call needed)."""
+    ok, reason = check_citations(a["raw_answer"], a["trace"])
+    shown = a["raw_answer"] if ok else (f"Answer withheld by the citation guardrail ({reason}). "
+                                        f"{REFUSAL} Please check with counsel or rephrase the question.")
+    return {**a, "answer": shown, "guardrail_ok": ok, "guardrail_reason": reason}
+
+
 async def run_agent(questions: list[dict]) -> dict:
-    answers = load_answers()
+    answers = {k: recheck(v) for k, v in load_answers().items()}
     todo = [q for q in questions if q["id"] not in answers]
     if todo:
         BASE_ONLY.touch()  # the server ignores documents added later, so the test set means the same
@@ -130,8 +138,8 @@ async def run_agent(questions: list[dict]) -> dict:
 
 
 def code_checks(q: dict, a: dict) -> dict:
-    refused = a["answer"].strip() == "" or REFUSAL in a["answer"]
-    cited = {f"{s} {l}" for s, l in re.findall(r"\[([A-Z][A-Z0-9_-]{1,15}) ([^\]]+)\]", a["answer"])}
+    cited = set(parse_citations(a["answer"]))
+    refused = a["answer"].strip() == "" or (bool(REFUSED.search(a["answer"])) and not cited)
     cited_sources = {c.split(" ")[0] for c in cited}
     exp_sources = {s for s, _ in expected(q)}
     return {
@@ -152,13 +160,15 @@ class Verdict(BaseModel):
     supported: bool = Field(description="True only if every factual claim in the answer appears in the retrieved passages.")
 
 
-JUDGE_PROMPT = """You are grading an assistant that answers M&A associates' questions about EU merger control and FDI screening, using only passages retrieved from legal texts.
+JUDGE_HEADER = """You are grading an assistant that answers M&A associates' questions about EU merger control and FDI screening, using only passages retrieved from legal texts. Grade every item below separately, using only that item's own reference answer and retrieved passages, and return one grade per item with its id.
 
 Criteria:
 1. Correct: the answer gives the same substance as the reference answer (numbers, deadlines, conditions). Extra correct detail is fine; a missing key condition or a wrong number fails. If the reference says the documents do not cover the question, the answer is correct only if it clearly says the documents do not cover it and does not answer from general knowledge. If the answer refuses but the reference has an answer, it is not correct.
-2. Supported: every factual claim in the answer appears in the retrieved passages below. Anything not in them is unsupported, even if it is true. A pure refusal counts as supported.
+2. Supported: every factual claim in the answer appears in the item's retrieved passages. Anything not in them is unsupported, even if it is true. A pure refusal counts as supported.
 
-Question: {question}
+"""
+
+JUDGE_ITEM = """Question: {question}
 Reference answer: {reference}
 Retrieved passages (what the search tool really returned, recorded by the harness):
 {evidence}
@@ -172,27 +182,52 @@ def evidence(trace: list[str], limit: int = 12000) -> str:
     return text[:limit] or "(no passages retrieved)"
 
 
+class GradedItem(Verdict):
+    id: str = Field(description="The question id, copied exactly.")
+
+
+class Grades(BaseModel):
+    grades: list[GradedItem]
+
+
+JUDGE_BATCH = 6   # the judge model's free tier allows only 20 requests a day, so several answers go in one call
+
+
 async def judge_all(questions: list[dict], answers: dict) -> dict:
+    """Grade every answer, JUDGE_BATCH at a time, keeping each answer's own rubric and evidence.
+    Verdicts are saved as they come; if the daily quota runs out the rest are graded on the next run."""
     path = EVAL / "verdicts.jsonl"
     verdicts = {} if os.environ.get("EVAL_FRESH") or not path.exists() else \
         {r["id"]: r for r in map(json.loads, path.read_text(encoding="utf-8").splitlines()) if r}
-    judge = ChatGoogleGenerativeAI(model=JUDGE_MODEL, temperature=0).with_structured_output(Verdict)
-    for q in questions:
-        if q["id"] in verdicts:
-            continue
-        a = answers[q["id"]]
+    judge = ChatGoogleGenerativeAI(model=JUDGE_MODEL, temperature=0).with_structured_output(Grades)
+    todo = [q for q in questions if q["id"] not in verdicts]
+    for i in range(0, len(todo), JUDGE_BATCH):
+        batch = todo[i:i + JUDGE_BATCH]
+        prompt = JUDGE_HEADER + "\n\n".join(
+            f"=== Item {q['id']} ===\n" + JUDGE_ITEM.format(
+                question=q["question"], reference=q["reference_answer"],
+                evidence=evidence(answers[q["id"]]["trace"], limit=6000),
+                answer=answers[q["id"]]["answer"] or "(empty)") for q in batch)
+        grades = None
         for attempt in range(3):
             try:
-                v = await judge.ainvoke(JUDGE_PROMPT.format(
-                    question=q["question"], reference=q["reference_answer"],
-                    evidence=evidence(a["trace"]), answer=a["answer"] or "(empty)"))
+                grades = (await judge.ainvoke(prompt)).grades
                 break
             except Exception as error:  # noqa: BLE001
-                pipeline.log(f"judge {q['id']}: {error}; retrying")
+                if "PerDay" in str(error) or "per day" in str(error).lower():
+                    pipeline.log("judge: daily quota reached; run evaluate again tomorrow to grade the rest")
+                    return verdicts
+                pipeline.log(f"judge: {str(error)[:120]}; retrying")
                 time.sleep(30 * (attempt + 1))
-        verdicts[q["id"]] = {"id": q["id"], **v.model_dump()}
+        if grades is None:
+            pipeline.log("judge: giving up for now; run evaluate again later")
+            return verdicts
+        wanted = {q["id"] for q in batch}
         with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(verdicts[q["id"]], ensure_ascii=False) + "\n")
+            for g in grades:
+                if g.id in wanted and g.id not in verdicts:
+                    verdicts[g.id] = g.model_dump()
+                    f.write(json.dumps(verdicts[g.id], ensure_ascii=False) + "\n")
     return verdicts
 
 
@@ -242,6 +277,19 @@ async def add_document_demo(questions: list[dict], answers: dict) -> dict:
     return demo
 
 
+def guardrail_test(answers: dict) -> dict:
+    """The agent cited correctly on every question, so to show the citation guardrail catching a
+    real problem I take a real answer and add one citation the search never returned (as a model
+    remembering an article from training would), plus the same answer with its citations removed."""
+    a = answers["q03"]
+    invented = a["raw_answer"] + " Fines for this are set out in [EUMR Art. 21(4)]."
+    uncited = re.sub(r"\s*\[[^\]]+\]", "", a["raw_answer"])
+    return {"question": "q03",
+            "invented_citation": dict(zip(("ok", "reason"), check_citations(invented, a["trace"]))),
+            "no_citations": dict(zip(("ok", "reason"), check_citations(uncited, a["trace"]))),
+            "original": dict(zip(("ok", "reason"), check_citations(a["raw_answer"], a["trace"])))}
+
+
 # --------------------------------------------------------------------------- main
 
 async def main():
@@ -255,7 +303,8 @@ async def main():
 
     rows = []
     for q in questions:
-        a, v = answers[q["id"]], verdicts[q["id"]]
+        a = answers[q["id"]]
+        v = verdicts.get(q["id"], {"correct": None, "supported": None, "reasoning": "not graded yet"})
         rows.append({"id": q["id"], "kind": q["kind"], **code_checks(q, a),
                      "judge_correct": v["correct"], "judge_supported": v["supported"],
                      "tokens_in": a["tokens"]["input"], "tokens_out": a["tokens"]["output"], "seconds": a["seconds"],
@@ -272,9 +321,10 @@ async def main():
         "retrieval": retrieval,
         "questions": {"total": n, "answerable": len(ans), "unanswerable": len(una)},
         "end_to_end": {
-            "correct": sum(r["judge_correct"] for r in rows),
-            "correct_answerable": sum(r["judge_correct"] for r in ans),
-            "unsupported": sum(not r["judge_supported"] for r in rows),
+            "judged": sum(r["judge_correct"] is not None for r in rows),
+            "correct": sum(bool(r["judge_correct"]) for r in rows),
+            "correct_answerable": sum(bool(r["judge_correct"]) for r in ans),
+            "unsupported": sum(r["judge_supported"] is False for r in rows),
             "correct_refusals": sum(r["correct_refusal"] for r in una),
             "wrong_refusals": sum(r["wrong_refusal"] for r in ans),
             "answered_unanswerable": sum(not r["refused"] for r in una),
@@ -288,6 +338,7 @@ async def main():
         },
         "human_vs_judge": agreement(verdicts),
     }
+    summary["guardrail_test"] = guardrail_test(answers)
     summary["add_document_demo"] = await add_document_demo(questions, answers)
     (EVAL / "summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     print(json.dumps({k: v for k, v in summary.items() if k != "add_document_demo"}, indent=2))

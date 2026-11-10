@@ -11,6 +11,7 @@ harness so the model cannot skip them:
 """
 
 import asyncio
+import os
 import re
 import sys
 import time
@@ -32,10 +33,48 @@ NEEDS_APPROVAL = {"add_document"}  # changes what every later answer is based on
 MAX_MODEL_CALLS = 8
 REFUSAL = "The Deal Desk documents do not cover this."
 CITATION = re.compile(r"\[([A-Z][A-Z0-9_-]{1,15}) ((?:Art\.|para\.|Recital|Annex|p\.)[^\]]*)\]")
+REFUSED = re.compile(r"documents do not cover", re.I)
+LOC_KIND = re.compile(r"^(Art\.|para\.|Recital|Annex|p\.)\s*")
+
+
+def parse_citations(answer: str) -> list[str]:
+    """Every cited unit as "SOURCE location". One bracket can hold several, as in
+    [CJN para. 155, 156] or [FDI Art. 2(2), Art. 2(7)] or [CJN para. 135, CJN para. 177]."""
+    out = []
+    for source, rest in CITATION.findall(answer):
+        kind = ""
+        for part in re.split(r"[,;]| and ", rest):
+            part = part.strip()
+            if not part:
+                continue
+            first = part.split(" ")[0]
+            if re.fullmatch(r"[A-Z][A-Z0-9_-]{1,15}", first) and " " in part:
+                source, part = first, part.split(" ", 1)[1]  # another document named inside the bracket
+            m = LOC_KIND.match(part)
+            if m:
+                kind = m.group(1)
+            elif part.startswith("(") and out:
+                # "(8)" after "Art. 7" means "Art. 7(8)"; "(e)" after "Art. 4(2)(c)" means "Art. 4(2)(e)"
+                previous = out[-1].split(" ", 1)[1]
+                if re.fullmatch(r"\(\d+\)", part):
+                    base = re.match(r"(Art\. \d+[a-z]?|para\. \d+)", previous)
+                    base = base.group(1) if base else previous
+                else:
+                    base = re.sub(r"\([a-z]+\)$", "", previous)
+                part = base + part
+            elif kind:
+                part = f"{kind} {part}"  # "156" after "para. 155" means "para. 156"
+            out.append(f"{source} {part}")
+    return out
 
 
 async def load_mcp_tools(stack):
-    adapter = await stack.enter_async_context(MCPAdapter(SERVER))
+    # the server gets this process's environment (API key, proxy and certificate settings),
+    # because by default an MCP stdio server starts with an almost empty one
+    from fastmcp import Client
+    from fastmcp.client.transports import PythonStdioTransport
+    client = Client(PythonStdioTransport(str(SERVER), env=dict(os.environ), cwd=str(ROOT)))
+    adapter = await stack.enter_async_context(MCPAdapter(client))
     return await adapter.list_tools()
 
 
@@ -113,19 +152,31 @@ def _normalise(citation: str) -> list[str]:
     if m:
         out.append(f"{source} {m.group(1)}{m.group(2) or ''}")
         out.append(f"{source} {m.group(1)}")
+    m = re.match(r"(para\. \d+|Recital \d+)", loc)
+    if m:  # "para. 5(a)" is supported by a passage covering para. 5
+        out.append(f"{source} {m.group(1)}")
+        out.append(f"{source} {m.group(1)}")
     return out
 
 
 def check_citations(answer: str, trace: list[str]) -> tuple[bool, str]:
     """Guardrail 3 (output). Returns (ok, reason)."""
-    cited = [f"{s} {l}" for s, l in CITATION.findall(answer)]
-    if answer.strip().startswith(REFUSAL) or REFUSAL in answer:
+    cited = parse_citations(answer)
+    if REFUSED.search(answer) and not cited:
         return True, "refusal"
     if not cited:
         return False, "the answer states facts without any citation"
     allowed = retrieved_citations(trace)
     allowed_articles = {a.split("(")[0] for a in allowed}
-    bad = [c for c in cited if not any(n in allowed or n in allowed_articles for n in _normalise(c))]
+
+    def supported(citation: str) -> bool:
+        forms = _normalise(citation)
+        if any(f in allowed for f in forms):
+            return True  # the exact unit, or the unit that contains the cited paragraph or point
+        # a bare "Art. 7" is fine if some paragraph of Article 7 was retrieved; "Art. 7(3)" is not
+        return "(" not in forms[0].split(" ", 1)[1] and forms[0] in allowed_articles
+
+    bad = [c for c in cited if not supported(c)]
     if bad:
         return False, f"citations not found in the search results: {', '.join(sorted(set(bad)))}"
     return True, "all citations match retrieved passages"
