@@ -57,7 +57,13 @@ Two examples:
 
 ## Retrieval
 
-*(Filled in after `main.py evaluate`: hit rate at 1, 3 and 5 for each design, the words each one adds to the prompt and the design I chose.)*
+| Design | Hit rate @1 | @3 | @5 | Words added to the prompt (top 5) | Chunks |
+|---|---|---|---|---|---|
+| structure | 0.429 | 0.657 | **0.914** | 661 | 584 |
+| fixed | 0.571 | 0.714 | 0.800 | 996 | 400 |
+| hybrid | 0.343 | 0.571 | 0.686 | 649 | 584 |
+
+These are from `eval/summary.json`, over the 35 questions that have an answer, and a question only counts as a hit if every passage it needs is in the top k, so the two-passage questions need both. I chose **structure**, because the agent always reads the top 5 results and that's where structure is clearly the best, finding the right passages for 0.914 of the questions against 0.800 for fixed, and it does it adding 661 words to the prompt instead of 996, so it's both more complete and cheaper. What surprised me is that fixed is better at putting the right passage first (0.571 against 0.429), and I think it's because its chunks are almost twice as long, so each one has more context around the answer and it's easier to match with the question, but it also brings more text that has nothing to do with it. The hybrid design was the worst, which I didn't expect, and I think the reason is that in these documents the words a keyword search would use, like "concentration", "Commission" or "turnover", appear in almost every paragraph, so adding the keyword ranking just pushed the right passages down.
 
 ## Tools and subagent
 
@@ -66,7 +72,14 @@ The tool server (`server.py`, called `corpus`) gives the AI two tools:
 - `search(query)`: looks for the 5 passages of the documents that best match the question and returns them, each one with its source in square brackets at the top, like [EUMR Art. 1(2)], so the AI can copy it into the answer. Its description also says what the documents don't cover, like Spanish or US rules, because I wanted the AI to know when not to trust the results.
 - `add_document(path)`: adds a new file, going through the same steps as the original documents and only creating the new embeddings.
 
-*(One real search result is added here after the evaluation runs.)*
+This is the first result `search` returned in `check.py` for the first test question ("...what turnover thresholds does it have to meet under the main test?"):
+
+```
+[EUMR Art. 1(1)–(3)] (Scope)
+Document: Council Regulation (EC) No 139/2004 on the control of concentrations between undertakings (EU Merger Regulation)
+Covers: Art. 1(1), Art. 1(2), Art. 1(3)
+Without prejudice to Article 4(5) and Article 22, this Regulation shall apply to all concentrations with a Community dimension as defined in this Article. A concentration has a Community dimension where: (a) ...
+```
 
 The subagent is a small specialised assistant that my code editor can call, defined in `.claude/agents/corpus-researcher.md`, and it can only use the search tool, so it can't add documents or do anything else. Its instructions tell it to search, search again with other words if the first results don't answer the question, answer in at most 150 words using only what the passages say, show the source of every sentence, reply "The Deal Desk documents do not cover this." when they don't have the answer, and never say that a deal doesn't need approval unless a passage supports it.
 
@@ -76,7 +89,7 @@ The subagent is a small specialised assistant that my code editor can call, defi
 
 Before adding a file, `add_document` creates a kind of fingerprint of its content, so if exactly the same file is already in the index it just says so and doesn't do anything, and if a new version of a document with the same name is added, it replaces the old one instead of keeping both, because having two versions of the same rule could make the assistant mix them. The demo uses the question "Which deals can go through the simplified procedure and use the short Form CO?", which the documents can't answer, and the Commission's 2023 guide on the simplified procedure, which is exactly the document that answers it.
 
-*(Answer before and after: filled in after the evaluation runs.)*
+Before adding it, the agent answered: "The Deal Desk documents do not cover the rules on the simplified procedure or the short Form CO...", and suggested asking outside counsel or adding the right document, which is exactly what it should do. Then `add_document` answered "Done: added STN (STN.html): 35 chunks in the 'structure' index, 35 new embeddings", and after that the same question got a real answer with five categories of deals that can use the simplified procedure, each one with its source, for example "Joint ventures with no EEA turnover: Joint ventures where two or more undertakings acquire joint control, provided the JV has no current or expected EEA turnover and no EEA asset transfers are planned at notification [STN para. 5(a)]". When I added the same file a second time, the tool answered "STN (STN.html) is already indexed with identical content; nothing was added", so it didn't create any new embeddings. All of this is saved in `eval/add_document_demo.json`.
 
 ## Harness and guardrails
 
@@ -88,7 +101,7 @@ The code also runs three guardrails that the AI can't skip, because they're in t
 2. **Call limit**: at most 8 calls to the AI per question, so if it starts going around in circles it stops instead of spending money.
 3. **Source check (my extra guardrail)**: after the AI answers, the code checks that every source it cites is one of the passages the search really returned in that conversation, and if one isn't, or if the answer gives facts without any source, the answer is blocked and the associate is told it couldn't be checked. I chose this one because the source is what the associate trusts, so a source the AI invented or remembered from its training is the most dangerous mistake, because it looks exactly like a real one.
 
-*(One case where it fired: filled in after the evaluation runs.)*
+In my first run the source check blocked 12 answers, and when I looked at them one by one none of them was actually wrong, it was my guardrail being too strict, because the agent wrote some sources in ways my code didn't understand, like two paragraphs in the same brackets ([CJN para. 155, 156]) or a point of a paragraph ([STN para. 5(a)]), and it also blocked two good refusals because they didn't use the exact sentence I asked for. After fixing how it reads the sources it doesn't block any of the 42 answers, which is good news but also means I didn't have a real case where it fired, because the agent always cited what it had found. That is why `evaluate.py` also tests it on purpose: it takes the real answer to "can they close the deal before the Commission clears it?" and adds one source the search never returned, as if the AI remembered it from its training, and the guardrail blocks it with "citations not found in the search results: EUMR Art. 21(4)", and the same answer with all its sources removed is blocked with "the answer states facts without any citation", while the original answer passes (`guardrail_test` in `eval/summary.json`).
 
 ## Evaluation
 
